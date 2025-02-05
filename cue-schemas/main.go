@@ -59,11 +59,11 @@ var schemaFile string
 
 func New(
 	// +optional
-	// +default="latest"
+	// +default="v0.11.0"
 	// the cue version to use
 	cueVersion string,
 	// +optional
-	// +default="latest"
+	// +default="v0.23.0"
 	// the timoni version to use
 	timoniVersion string,
 	// +optional
@@ -240,12 +240,14 @@ func (m *CueSchemas) Publish(
 	var result string
 	for _, s := range schemas {
 		semver := semver.MustParse(s.Version)
-		stdout, err := ctr.WithDirectory(s.Name, s.Directory).
-			WithWorkdir(s.Name).
-			WithExec([]string{"cue", "mod", "init", fmt.Sprintf("github.com/%s/%s/%s@v%d", owner, repo, s.Name, semver.Major()), "--source=self"}).
-			WithExec([]string{"sh", "-c", fmt.Sprintf("find . -type f -exec sed -i 's/\"%s/\"github.com\\/%s\\/%s\\/%s/g' {} +", s.Name, owner, repo, s.Name)}).
+		pub := ctr.WithDirectory(s.Name, s.Directory).
+			WithWorkdir(s.Name)
+		if s.Name == "k8s.io" || s.Name == "timoni.sh" {
+			pub = pub.WithExec([]string{"sh", "-c", fmt.Sprintf("find . -type f -exec sed -i 's/\"%s/\"github.com\\/%s\\/%s\\/%s/g' {} +", s.Name, owner, repo, s.Name)})
+		}
+		stdout, err := pub.WithExec([]string{"cue", "mod", "init", fmt.Sprintf("github.com/%s/%s/%s@v%d", owner, repo, s.Name, semver.Major()), "--source=self"}).
 			WithExec([]string{"cue", "mod", "tidy"}).
-			WithExec([]string{"cue", "mod", "publish", s.Version, "--ignore", "--json"}).
+			WithExec([]string{"cue", "mod", "publish", s.Version}).
 			Stdout(ctx)
 		result += stdout
 		if err != nil {
