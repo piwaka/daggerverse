@@ -1,0 +1,81 @@
+---
+version: '3'
+vars:
+  DAGGER_ENGINE_NAME: dagger-engine
+  DAGGER_ENGINE_REPOSITORY: registry.dagger.io/engine
+  DAGGER_VERSION: v0.15.3
+  DAGGER_CONFIG: '{{.ROOT_DIR}}/.dagger/engine.toml'
+  DAGGER_ENV_FILE: '{{.ROOT_DIR}}/.dagger/dagger.env'
+  DAGGER_DATA: '{{.DAGGER_ENGINE_NAME}}-data'
+  DAGGER_CACHE: '{{.DAGGER_ENGINE_NAME}}-cache'
+env:
+  DO_NOT_TRACK: 1 # Disable Dagger tracking
+  _EXPERIMENTAL_DAGGER_RUNNER_HOST: docker-container://{{.DAGGER_ENGINE_NAME}}
+tasks:
+  start:
+    desc: Start the Dagger engine
+    cmds:
+      - |
+        if docker ps --filter name={{.DAGGER_ENGINE_NAME}} --format '{{.Names}}' | grep -q {{.DAGGER_ENGINE_NAME}}; then
+          echo "Dagger engine is already running."
+        elif docker ps -a --filter name={{.DAGGER_ENGINE_NAME}} --format '{{.Names}}' | grep -q {{.DAGGER_ENGINE_NAME}}; then
+          echo "Dagger engine container exists but is not running. Starting it..."
+          docker start {{.DAGGER_ENGINE_NAME}}
+        else
+          echo "Starting new Dagger engine..."
+          docker run --rm --detach --privileged \
+            --name {{.DAGGER_ENGINE_NAME}} \
+            --volume {{.DAGGER_DATA}}:/var/lib/dagger \
+            --volume {{.DAGGER_CACHE}}:/root/.cache/dagger \
+            --volume {{.DAGGER_CONFIG}}:/etc/dagger/engine.toml:ro \
+            --env-file {{.DAGGER_ENV_FILE}} \
+            {{.DAGGER_ENGINE_REPOSITORY}}:{{.DAGGER_VERSION}}
+        fi
+  stop:
+    desc: Stop the Dagger engine
+    cmds:
+      - |
+        if docker ps --filter name={{.DAGGER_ENGINE_NAME}} --format '{{.Names}}' | grep -q {{.DAGGER_ENGINE_NAME}}; then
+          docker stop {{.DAGGER_ENGINE_NAME}}
+        else
+          echo "Dagger engine is not running."
+        fi
+  restart:
+    desc: Restart the Dagger engine
+    cmds:
+      - task: stop
+      - task: start
+  check:
+    desc: Check the status of the Dagger engine
+    cmds:
+      - |
+        if docker ps --filter name={{.DAGGER_ENGINE_NAME}} --format '{{.Names}}' | grep -q {{.DAGGER_ENGINE_NAME}}; then
+          echo "Dagger engine is running."
+        elif docker ps -a --filter name={{.DAGGER_ENGINE_NAME}} --format '{{.Names}}' | grep -q {{.DAGGER_ENGINE_NAME}}; then
+          echo "Dagger engine container exists, but is not running."
+        else
+          echo "Dagger engine container does not exist."
+        fi
+  cleanup:
+    desc: Clean up Dagger
+    cmds:
+      - task: stop
+      - |
+        if docker ps -a --filter name={{.DAGGER_ENGINE_NAME}} --format '{{.Names}}' | grep -q {{.DAGGER_ENGINE_NAME}}; then
+          echo "Removing Dagger engine container..."
+          docker rm -f {{.DAGGER_ENGINE_NAME}}
+        fi
+      - |
+        read -p "Do you want to remove the Dagger engine volumes? This will delete all cached data. (y/N): " answer
+        if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
+          if docker volume ls --filter name={{.DAGGER_DATA}} --format '{{.Name}}' | grep -q {{.DAGGER_DATA}}; then
+            echo "Removing Dagger engine volumes..."
+            docker volume rm {{.DAGGER_DATA}}
+            docker volume rm {{.DAGGER_CACHE}}
+          else
+            echo "Dagger engine volumes not found."
+          fi
+        else
+          echo "Skipping volume removal."
+        fi
+      - echo "Cleanup complete."

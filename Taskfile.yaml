@@ -1,0 +1,18 @@
+---
+version: '3'
+dotenv:
+  - .env
+includes:
+  dagger: ./.task/dagger.yaml
+tasks:
+  default:
+    cmds:
+      - task: list
+  list:
+    desc: List all tasks
+    cmds:
+      - task --list
+  envs:
+    desc: Print environment variables
+    cmds:
+      - env
